@@ -1,0 +1,187 @@
+pool:
+  name: Docker Agent - Linux
+  demands: Agent.Name -equals agent-linux-sqlcl
+
+variables:
+- group: variables
+
+stages:
+- stage: Build_Objects
+  displayName: 'Build Objects'
+  jobs:
+  - job: BuildJob
+    displayName: 'Build App'
+    steps:
+
+    - checkout: self
+      persistCredentials: true
+      clean: true
+
+    - bash: |
+          echo "E-mail request: " $BUILD_REQUESTEDFOREMAIL
+          git config --global user.email "$BUILD_REQUESTEDFOREMAIL"
+          echo "Usuario request: " $BUILD_REQUESTEDFOR
+          git config --global user.name "$BUILD_REQUESTEDFOR"
+      displayName: 'Git Config'
+      enabled: true
+
+    - bash: |
+          git branch
+          git branch -D feature/$(Build.SourceBranchName)
+          echo " "
+          echo "**Git Checkout**"
+          git checkout -b feature/$(Build.SourceBranchName)
+          echo " "
+          echo "**Ajusta parametros da Branch**"
+          branch=$(Build.SourceBranchName)
+          echo "Branch "$branch
+      displayName: 'Git Branch'
+      enabled: true
+
+    - bash: |
+          find applications/ -type f ! -name 'README.md' -exec rm -r {} +
+          find pipeline/tmp -type f ! -name 'README.md' -exec rm -r {} +
+          chmod +x pipeline/scripts/export-app.sh
+          pipeline/scripts/export-app.sh
+          chmod +x pipeline/scripts/pull-request.sh
+      displayName: 'Prepare Exports'
+      enabled: true
+
+    - bash: |
+          chmod +x pipeline/scripts/import-app.sh
+          pipeline/scripts/import-app.sh
+          chmod +x pipeline/scripts/execute-scripts.sh
+          pipeline/scripts/execute-scripts.sh
+      displayName: 'Prepare Imports / Execute'
+      enabled: true
+
+    - bash: |
+          exec-database.sh appsdev pipeline/tmp/export-app.sql
+      displayName: 'Export App'
+      enabled: true
+
+    - bash: |
+          cd applications
+          branch=feature/$(Build.SourceBranchName)
+          echo " "
+          echo "**Git Checkout**"
+          git checkout $branch
+          echo " "
+          echo "**Git Add**"
+          git add --all
+          echo " "
+          echo "**Git Commit**"
+          git commit -m "Alteração de aplicação ref. branch: $branch"
+          echo " "
+          echo "**Git Status**"
+          git status
+          echo " "
+          echo "**Git Push**"
+          git push -f origin $branch
+      displayName: 'Git Push'
+      enabled: true
+
+- stage: Deploy_QA
+  displayName: 'Deploy QA'
+  dependsOn: Build_Objects
+  jobs:
+  - deployment: DeployJob
+    displayName: 'Deploy App'
+    pool:
+      name: Docker Agent - Linux
+      demands: Agent.Name -equals agent-linux-sqlcl
+    environment: 'qa'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: CmdLine@2
+            inputs:
+              script: |
+                exec-database.sh appsqa pipeline/tmp/import-app.sql
+            displayName: 'Import App'
+            enabled: true
+          - task: CmdLine@2
+            inputs:
+              script: |
+                exec-database.sh appsqa pipeline/tmp/execute-scripts.sql
+            displayName: 'Execute Scripts Database'
+            enabled: true
+
+- stage: Deploy_PRD
+  displayName: 'Deploy PRD'
+  dependsOn: Deploy_QA
+  jobs:
+  - deployment: DeployJob
+    displayName: 'Deploy App'
+    pool:
+      name: Docker Agent - Linux
+      demands: Agent.Name -equals agent-linux-sqlcl
+    environment: 'prd'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: CmdLine@2
+            inputs:
+              script: |
+                exec-database.sh appsprd pipeline/tmp/import-app.sql
+            displayName: 'Import App'
+            enabled: true
+          - task: CmdLine@2
+            inputs:
+              script: |
+                exec-database.sh appsqa pipeline/tmp/execute-scripts.sql
+            displayName: 'Execute Scripts Database'
+            enabled: true
+
+- stage: Create_PR
+  displayName: 'Create Pull Request'
+  dependsOn: Deploy_PRD
+  jobs:
+  - job: CreatePRJob
+    displayName: 'Create Pull Request'
+    pool:
+      name: Docker Agent - Linux
+      demands: Agent.Name -equals agent-linux-sqlcl
+    steps:
+    - checkout: self
+      persistCredentials: true
+      clean: true
+    - bash: |
+          branch=feature/$(Build.SourceBranchName)
+          echo " "
+          echo "**Git Checkout**"
+          git remote update
+          git fetch
+          git checkout $branch
+          echo " "
+          echo "**Remove tmp**"
+          find applications/ -type f -name "*.xml" -exec rm {} \;
+          find database/scripts/ -type f -name "*.sql" -exec rm {} \;
+          find pipeline/tmp/ -type f -name "*.sql" -exec rm {} \;
+          echo "**Git Add**"
+          git add --all
+          echo " "
+          echo "**Git Commit**"
+          git commit -m "Alteração de aplicação ref. branch: $branch"
+          echo " "
+          echo "**Git Status**"
+          git status
+          echo " "
+          echo "**Git Push**"
+          git push -f origin $branch
+      displayName: 'Git Push'
+      enabled: true
+
+    - bash: |
+
+        echo "Token de Acesso Pessoal (PAT): $(PatToken)"
+        echo "Branch de Origem: $(Build.SourceBranch)"
+        echo "ID do Repositório: $(Build.Repository.ID)"
+        echo "Nome do Projeto: $(System.TeamProject)"
+        echo "ID do Projeto: " $(System.TeamProjectId)
+
+        pipeline/scripts/pull-request.sh "$(PatToken)" "$(Build.SourceBranch)" "$(Build.Repository.ID)" "$(System.TeamProject)" "$(System.CollectionUri)" "$(System.TeamProjectId)"
+
+      displayName: 'Create Pull Request'

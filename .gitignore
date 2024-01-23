@@ -1,0 +1,3 @@
+aplications/*.xml
+pipeline/tmp
+config-deploy.json
