@@ -7,7 +7,7 @@ Este repositório contém scripts e definições para pipelines usados no proces
 ### Abertura de Feature Branch
 
 ```bash
-git clone https://ambientalcorp@dev.azure.com/ambientalcorp/Eng.%20de%20Plataforma%20e%20Aplica%C3%A7%C3%B5es/_git/workspace-apps
+git clone url
 git checkout develop            # Mudar para a branch develop
 git pull origin develop         # Atualizar a branch develop
 git checkout -b feature/xpto    # Criar e mudar para a nova feature branch
