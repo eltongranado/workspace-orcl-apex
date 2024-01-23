@@ -1,4 +1,4 @@
-# Repositório de Pipeline
+# Repositório de Aplicações e Pipeline Oracle APEX
 
 Este repositório contém scripts e definições para pipelines usados no processo de integração contínua (CI/CD).
 
