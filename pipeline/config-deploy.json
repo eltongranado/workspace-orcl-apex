@@ -1,0 +1,13 @@
+{
+  "apex": [
+    {
+      "appids": 102,
+      "pageids": [1, 2]
+    }
+  ],
+  "database": {
+    "scripts": [
+      {"ordem": 1, "script": "script-1.sql"}
+    ]
+  }
+}
